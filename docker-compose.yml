@@ -1,0 +1,85 @@
+#A versao do docker compose compativel com o docker
+version: '3.8'
+
+services:
+  #nome da imagem personalizada.
+  app-laravel:
+    build: 
+      args:
+        user: marcelo
+        uid: 1000
+      context: ./
+      dockerfile: DockerFile
+    #Nome da imagem
+    image: marcelolinck/laravel-app
+    #Em que diretório irá guardar os dados
+    working_dir: /var/www
+    volumes:
+    #Dessa forma copia todos os dados do diretorio atual para o diretorio do container indicado abaixo
+      - ./:/var/www
+    #Dessa forma ele vai reiniciar somente se parar
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - queue
+    networks:
+      - docker-laravel
+ 
+ 
+  #nginx - nesse ponto é para a criacao do container do nginx
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - 80:80
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/:/etc/nginx/conf.d
+    networks:
+      - docker-laravel
+
+  #db - criando o container do mysql
+  mysql:
+    image: mysql:8.0.26
+    restart: unless-stopped
+    ports: 
+      - 3307:3306
+      #Isto para que no momento que no momento que matar esse container, o docker persista os dados dentro do host, dai nao tem perda de dados.
+    volumes:
+        - ./.docker/mysql:/var/lib/mysql
+    environment:
+    #Aqui estou passando uma variavel de ambiente para nao expor o meu db no git.
+        MYSQL_DATABASE: ${DB_DATABASE}
+        MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+        MYSQL_USER: ${DB_USERNAME}
+        MYSQL_PASSWORD: ${DB_PASSWORD}
+    networks: 
+      - docker-laravel
+  #Agora aqui vamos criar o container do redis
+  redis:
+    image: redis:latest
+    networks: 
+      - docker-laravel
+
+  #Criando um container de filas
+  queue:
+    build:
+      args:
+        user: marcelo
+        uid: 1000
+      context: ./
+      dockerfile: Dockerfile
+    restart: always
+    command: "php artisan queue:work"
+    volumes:
+      - ./:/var/www
+   #Aqui indica que o container do redis tem que subir primeiro
+    depends_on:
+      - redis
+    networks: 
+      - docker-laravel
+
+networks:
+  docker-laravel:
+    driver: bridge
+
